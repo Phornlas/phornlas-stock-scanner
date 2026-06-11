@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Phornlas Stock Scanner — Watchlist</title>
+<title>Thai Stock Scanner — Watchlist</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -222,15 +222,15 @@ async function fetchStock(ticker) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=3mo&includePrePost=false`;
   async function fetchWithFallback(targetUrl) {
     const proxies = [
-      u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
       u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-      u => `https://thingproxy.freeboard.io/fetch/${u}`,
+      u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+      u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
     ];
     for (const makeProxy of proxies) {
       try {
         const res = await Promise.race([
           fetch(makeProxy(targetUrl)),
-          new Promise((_,rej) => setTimeout(() => rej(new Error('to')), 7000))
+          new Promise((_,rej) => setTimeout(() => rej(new Error('to')), 5000))
         ]);
         if (!res.ok) continue;
         const text = await res.text();
@@ -271,7 +271,11 @@ async function fetchStock(ticker) {
 
 async function refreshAll() {
   document.getElementById('last-update').textContent = 'กำลังดึงข้อมูล...';
-  for (const t of watchlist) await fetchStock(t);
+  const BATCH = 5;
+  for (let i = 0; i < watchlist.length; i += BATCH) {
+    const batch = watchlist.slice(i, i + BATCH);
+    await Promise.all(batch.map(t => fetchStock(t)));
+  }
   const now = new Date();
   document.getElementById('last-update').textContent = `อัพเดท ${now.toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'})}`;
 }
