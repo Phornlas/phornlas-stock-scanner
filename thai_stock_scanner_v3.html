@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thai Stock Scanner — Watchlist</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f8f7f4; --surface: #ffffff; --border: #e8e6e1;
+    --text: #1a1a1a; --muted: #6b6b6b; --faint: #9a9a9a;
+    --green: #0f6e56; --green-bg: #e1f5ee; --green-mid: #1d9e75;
+    --red: #a32d2d; --red-bg: #fcebeb; --red-mid: #e24b4a;
+    --amber: #854f0b; --amber-bg: #faeeda; --amber-mid: #ba7517;
+    --blue: #185fa5; --blue-bg: #e6f1fb; --blue-mid: #378add;
+    --purple: #534ab7; --purple-bg: #eeedfe;
+    --radius: 10px; --radius-sm: 6px;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+  .app { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+  .logo { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
+  .logo span { color: var(--green-mid); }
+  .header-right { display: flex; align-items: center; gap: 10px; }
+  .last-update { font-size: 12px; color: var(--faint); }
+  button { font-family: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: var(--radius-sm); padding: 8px 14px; font-size: 13px; transition: background 0.15s, border-color 0.15s; }
+  button:hover { background: var(--bg); border-color: #ccc; }
+  button.primary { background: var(--green-mid); color: #fff; border-color: var(--green-mid); }
+  button.primary:hover { background: var(--green); border-color: var(--green); }
+  button.danger { background: var(--red-bg); color: var(--red); border-color: #f7c1c1; }
+  button.danger:hover { background: #f7c1c1; }
+  .add-bar { display: flex; gap: 8px; margin-bottom: 20px; }
+  .add-bar input { flex: 1; max-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; background: var(--surface); color: var(--text); outline: none; text-transform: uppercase; }
+  .add-bar input:focus { border-color: var(--green-mid); }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .metric-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .metric-value { font-size: 22px; font-weight: 600; }
+  .metric-value.green { color: var(--green-mid); }
+  .metric-value.red { color: var(--red-mid); }
+  .metric-value.amber { color: var(--amber-mid); }
+  .filter-bar { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .filter-chip { padding: 5px 12px; border-radius: 20px; font-size: 12px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; transition: all 0.15s; }
+  .filter-chip:hover { border-color: #aaa; }
+  .filter-chip.active { background: var(--text); color: #fff; border-color: var(--text); }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  thead { background: var(--bg); }
+  th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
+  th:hover { color: var(--text); }
+  td { padding: 11px 12px; border-bottom: 1px solid #f0ede8; font-size: 13px; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #faf9f6; }
+  .ticker { font-weight: 700; font-size: 14px; letter-spacing: 0.3px; }
+  .ticker-full { font-size: 11px; color: var(--faint); display: block; font-weight: 400; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+  .price { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .change { font-variant-numeric: tabular-nums; font-weight: 500; padding: 3px 8px; border-radius: 20px; white-space: nowrap; font-size: 12px; }
+  .change.up { background: var(--green-bg); color: var(--green); }
+  .change.down { background: var(--red-bg); color: var(--red); }
+  .change.flat { background: #f0ede8; color: var(--muted); }
+  .signal-badge { padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .signal-buy { background: var(--green-bg); color: var(--green); }
+  .signal-sell { background: var(--red-bg); color: var(--red); }
+  .signal-hold { background: var(--amber-bg); color: var(--amber); }
+  .signal-watch { background: var(--blue-bg); color: var(--blue); }
+  .rsi-bar { width: 60px; height: 6px; background: #eee; border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 6px; position: relative; overflow: hidden; }
+  .rsi-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+  .rsi-val { font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .div-yield { font-variant-numeric: tabular-nums; }
+  .volume-pill { font-size: 11px; background: var(--purple-bg); color: var(--purple); padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
+  .row-actions { display: flex; gap: 6px; }
+  .row-actions button { padding: 4px 8px; font-size: 11px; }
+  .loading-row td { text-align: center; padding: 24px; color: var(--faint); }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--green-mid); border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty-state { text-align: center; padding: 48px 24px; color: var(--faint); }
+  .empty-icon { font-size: 36px; margin-bottom: 12px; }
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--text); color: #fff; padding: 10px 18px; border-radius: var(--radius-sm); font-size: 13px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 100; }
+  .toast.show { opacity: 1; }
+  .info-note { font-size: 12px; color: var(--faint); margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); line-height: 1.6; }
+  @media (max-width: 600px) {
+    .col-div, .col-vol, .col-name { display: none; }
+    .add-bar input { max-width: 140px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">Thai Stock <span>Scanner</span></div>
+    <div class="header-right">
+      <span class="last-update" id="last-update">ยังไม่ได้ดึงข้อมูล</span>
+      <button class="primary" onclick="refreshAll()">⟳ รีเฟรชทั้งหมด</button>
+    </div>
+  </header>
+
+  <div class="add-bar">
+    <input type="text" id="ticker-input" placeholder="เพิ่มหุ้น เช่น AOT" maxlength="12"
+      onkeydown="if(event.key==='Enter')addTicker()">
+    <button class="primary" onclick="addTicker()">+ เพิ่ม</button>
+    <button onclick="refreshAll()">ดึงข้อมูลใหม่</button>
+    <button onclick="resetToDefault()" style="font-size:12px;color:var(--muted)">↺ คืนค่าลิสต์</button>
+  </div>
+
+  <div class="summary-grid" id="summary-grid">
+    <div class="metric-card"><div class="metric-label">หุ้นทั้งหมด</div><div class="metric-value" id="m-total">—</div></div>
+    <div class="metric-card"><div class="metric-label">สัญญาณ ซื้อ</div><div class="metric-value green" id="m-buy">—</div></div>
+    <div class="metric-card"><div class="metric-label">สัญญาณ ขาย</div><div class="metric-value red" id="m-sell">—</div></div>
+    <div class="metric-card"><div class="metric-label">ปันผลเฉลี่ย</div><div class="metric-value amber" id="m-div">—</div></div>
+  </div>
+
+  <div class="filter-bar">
+    <span class="filter-chip active" onclick="setFilter('all',this)">ทั้งหมด</span>
+    <span class="filter-chip" onclick="setFilter('buy',this)">🟢 ซื้อ</span>
+    <span class="filter-chip" onclick="setFilter('sell',this)">🔴 ขาย</span>
+    <span class="filter-chip" onclick="setFilter('hold',this)">🟡 Hold</span>
+    <span class="filter-chip" onclick="setFilter('div',this)">💰 ปันผล ≥3%</span>
+    <span class="filter-chip" onclick="setFilter('volume',this)">⚡ Volume สูง</span>
+  </div>
+
+  <table id="stock-table">
+    <thead>
+      <tr>
+        <th onclick="sortBy('ticker')">หุ้น</th>
+        <th class="col-name" onclick="sortBy('name')">ชื่อ</th>
+        <th onclick="sortBy('price')">ราคา (฿)</th>
+        <th onclick="sortBy('change')">%เปลี่ยน</th>
+        <th onclick="sortBy('rsi')">RSI</th>
+        <th class="col-div" onclick="sortBy('div')">ปันผล</th>
+        <th class="col-vol" onclick="sortBy('volume')">Volume</th>
+        <th onclick="sortBy('signal')">สัญญาณ</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="stock-body">
+      <tr class="loading-row"><td colspan="9"><div class="empty-state"><div class="empty-icon">📋</div>เพิ่มหุ้นที่ต้องการติดตามด้านบน</div></td></tr>
+    </tbody>
+  </table>
+  <div class="info-note">
+    ⚠️ ข้อมูลมาจาก Yahoo Finance (delayed ~15 นาที) · RSI คำนวณจาก 14 วัน · สัญญาณเป็นเพียงตัวช่วยวิเคราะห์เบื้องต้น ไม่ใช่คำแนะนำการลงทุน
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const DEFAULT_WATCHLIST = ["88TH","ADVANC","ADVICE","BDMS","CENTEL","COM7","CPALL","CPI","DITTO","EFORL","FLOYD","ICHI","ILM","JCT","JDF","KAMART","KCG","KDH","KISS","LPH","LRH","MC","MINT","MOSHI","MRDIYT","NSL","PM","PR9","RAM","ROCK","SAUCE","SIS","SISB","SNPS","SYNEX","TMAN","TNP","VIH","WASH"];
+
+let watchlist = JSON.parse(localStorage.getItem('thai_watchlist_v3') || 'null') || [...DEFAULT_WATCHLIST];
+let stockData = {};
+let currentFilter = 'all';
+let sortKey = 'signal';
+let sortDir = 1;
+
+function saveWatchlist() { localStorage.setItem('thai_watchlist_v3', JSON.stringify(watchlist)); }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function addTicker() {
+  const input = document.getElementById('ticker-input');
+  const raw = input.value.trim().toUpperCase().replace(/\.BK$/,'');
+  if (!raw) return;
+  if (watchlist.includes(raw)) { showToast(`${raw} มีอยู่แล้ว`); input.value = ''; return; }
+  watchlist.push(raw);
+  saveWatchlist();
+  input.value = '';
+  fetchStock(raw);
+  showToast(`เพิ่ม ${raw} แล้ว`);
+}
+
+function removeTicker(ticker) {
+  watchlist = watchlist.filter(t => t !== ticker);
+  delete stockData[ticker];
+  saveWatchlist();
+  renderTable();
+  showToast(`ลบ ${ticker} แล้ว`);
+}
+
+function calcRSI(closes) {
+  if (closes.length < 15) return null;
+  let gains = 0, losses = 0;
+  for (let i = closes.length - 14; i < closes.length; i++) {
+    const d = closes[i] - closes[i-1];
+    if (d > 0) gains += d; else losses += Math.abs(d);
+  }
+  if (losses === 0) return 100;
+  const rs = (gains / 14) / (losses / 14);
+  return Math.round(100 - 100 / (1 + rs));
+}
+
+function calcMomentum(closes) {
+  if (closes.length < 10) return null;
+  const recent = closes.slice(-5).reduce((a,b) => a+b,0)/5;
+  const older = closes.slice(-10,-5).reduce((a,b) => a+b,0)/5;
+  return ((recent - older) / older) * 100;
+}
+
+function calcSignal(rsi, change, divYield, momentum) {
+  if (rsi === null) return 'watch';
+  if (rsi < 35 && change < -2) return 'sell';
+  if (rsi < 40 && momentum !== null && momentum < -3) return 'sell';
+  if (rsi < 45 && change >= 0) return 'buy';
+  if (rsi >= 45 && rsi < 60 && (divYield >= 3 || momentum > 2)) return 'buy';
+  if (rsi >= 70) return 'sell';
+  if (rsi >= 60 && rsi < 70) return 'hold';
+  return 'hold';
+}
+
+function fmtVol(v) {
+  if (!v || v === 0) return '—';
+  if (v >= 1e9) return (v/1e9).toFixed(1)+'B';
+  if (v >= 1e6) return (v/1e6).toFixed(1)+'M';
+  if (v >= 1e3) return (v/1e3).toFixed(0)+'K';
+  return v.toString();
+}
+
+async function fetchStock(ticker) {
+  const sym = ticker.includes('.') ? ticker : ticker + '.BK';
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=3mo&includePrePost=false`;
+  async function fetchWithFallback(targetUrl) {
+    const proxies = [
+      u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+      u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+      u => `https://thingproxy.freeboard.io/fetch/${u}`,
+    ];
+    for (const makeProxy of proxies) {
+      try {
+        const res = await Promise.race([
+          fetch(makeProxy(targetUrl)),
+          new Promise((_,rej) => setTimeout(() => rej(new Error('to')), 7000))
+        ]);
+        if (!res.ok) continue;
+        const text = await res.text();
+        try { const o = JSON.parse(text); return o.contents ? JSON.parse(o.contents) : o; }
+        catch { return JSON.parse(text); }
+      } catch(e) { continue; }
+    }
+    throw new Error('all proxies failed');
+  }
+
+  try {
+    stockData[ticker] = { ...stockData[ticker], loading: true };
+    renderTable();
+    const data = await fetchWithFallback(url);
+    const result = data?.chart?.result?.[0];
+    if (!result) throw new Error('no data');
+    const meta = result.meta;
+    const closes = result.indicators?.quote?.[0]?.close?.filter(v => v != null) || [];
+    const volumes = result.indicators?.quote?.[0]?.volume?.filter(v => v != null) || [];
+    const price = meta.regularMarketPrice || closes[closes.length-1] || 0;
+    const prevClose = meta.chartPreviousClose || meta.previousClose || closes[closes.length-2] || price;
+    const change = prevClose ? ((price - prevClose)/prevClose)*100 : 0;
+    const rsi = calcRSI(closes);
+    const momentum = calcMomentum(closes);
+    const volume = volumes[volumes.length-1] || 0;
+    const avgVol = volumes.length > 5 ? volumes.slice(-20).reduce((a,b)=>a+b,0)/Math.min(20,volumes.length) : 0;
+    const volSurge = avgVol > 0 ? volume/avgVol : 1;
+    const divYield = meta.dividendYield ? meta.dividendYield * 100 : (meta.trailingAnnualDividendYield ? meta.trailingAnnualDividendYield * 100 : 0);
+    const name = meta.shortName || meta.longName || ticker;
+    const signal = calcSignal(rsi, change, divYield, momentum);
+    stockData[ticker] = { ticker, name, price, change, rsi, divYield, volume, volSurge, signal, momentum, loading: false, error: false };
+  } catch(e) {
+    stockData[ticker] = { ticker, name: ticker, price: 0, change: 0, rsi: null, divYield: 0, volume: 0, volSurge: 1, signal: 'watch', momentum: null, loading: false, error: true };
+  }
+  renderTable();
+  updateSummary();
+}
+
+async function refreshAll() {
+  document.getElementById('last-update').textContent = 'กำลังดึงข้อมูล...';
+  for (const t of watchlist) await fetchStock(t);
+  const now = new Date();
+  document.getElementById('last-update').textContent = `อัพเดท ${now.toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'})}`;
+}
+
+function setFilter(f, el) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderTable();
+}
+
+function sortBy(key) {
+  if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = 1; }
+  renderTable();
+}
+
+function filterData(data) {
+  if (currentFilter === 'all') return data;
+  if (currentFilter === 'buy') return data.filter(d => d.signal === 'buy');
+  if (currentFilter === 'sell') return data.filter(d => d.signal === 'sell');
+  if (currentFilter === 'hold') return data.filter(d => d.signal === 'hold');
+  if (currentFilter === 'div') return data.filter(d => d.divYield >= 3);
+  if (currentFilter === 'volume') return data.filter(d => d.volSurge >= 1.5);
+  return data;
+}
+
+function signalOrder(s) { return {buy:0,watch:1,hold:2,sell:3}[s] ?? 4; }
+
+function renderTable() {
+  const tbody = document.getElementById('stock-body');
+  if (watchlist.length === 0) {
+    tbody.innerHTML = `<tr class="loading-row"><td colspan="9"><div class="empty-state"><div class="empty-icon">📋</div>เพิ่มหุ้นที่ต้องการติดตามด้านบน</div></td></tr>`;
+    return;
+  }
+  let rows = watchlist.map(t => stockData[t] || { ticker:t, loading:true });
+  let completed = rows.filter(r => !r.loading && !r.error);
+  completed = filterData(completed);
+  completed.sort((a,b) => {
+    let va, vb;
+    if (sortKey === 'ticker') { va = a.ticker; vb = b.ticker; return sortDir * va.localeCompare(vb); }
+    if (sortKey === 'signal') { va = signalOrder(a.signal); vb = signalOrder(b.signal); }
+    else if (sortKey === 'change') { va = a.change; vb = b.change; }
+    else if (sortKey === 'rsi') { va = a.rsi ?? -1; vb = b.rsi ?? -1; }
+    else if (sortKey === 'price') { va = a.price; vb = b.price; }
+    else if (sortKey === 'div') { va = a.divYield; vb = b.divYield; }
+    else if (sortKey === 'volume') { va = a.volSurge; vb = b.volSurge; }
+    else { va = 0; vb = 0; }
+    return sortDir * (va - vb);
+  });
+  const loading = rows.filter(r => r.loading);
+  const errored = rows.filter(r => !r.loading && r.error);
+
+  let html = '';
+  [...completed, ...loading, ...errored].forEach(d => {
+    if (d.loading) {
+      html += `<tr><td><span class="ticker">${d.ticker}</span></td><td class="col-name">—</td><td colspan="6"><span class="spinner"></span>กำลังโหลด...</td><td></td></tr>`;
+      return;
+    }
+    if (d.error) {
+      html += `<tr><td><span class="ticker">${d.ticker}</span></td><td class="col-name" colspan="6" style="color:var(--faint)">ไม่พบข้อมูล (อาจชื่อผิด)</td><td><button class="danger" onclick="removeTicker('${d.ticker}')">ลบ</button></td></tr>`;
+      return;
+    }
+    const chgClass = d.change > 0 ? 'up' : d.change < 0 ? 'down' : 'flat';
+    const chgSign = d.change > 0 ? '+' : '';
+    const rsiColor = d.rsi < 30 ? '#e24b4a' : d.rsi < 45 ? '#ba7517' : d.rsi > 70 ? '#e24b4a' : d.rsi > 60 ? '#ba7517' : '#1d9e75';
+    const rsiW = d.rsi ? Math.min(100,d.rsi) : 0;
+    const divStr = d.divYield > 0 ? d.divYield.toFixed(1)+'%' : '—';
+    const sigLabel = {buy:'ซื้อ 🟢',sell:'ขาย 🔴',hold:'Hold 🟡',watch:'สังเกต 🔵'}[d.signal] || '—';
+    const sigClass = 'signal-'+d.signal;
+    const volLabel = d.volSurge >= 2 ? `${d.volSurge.toFixed(1)}x ⚡` : d.volSurge >= 1.5 ? `${d.volSurge.toFixed(1)}x` : fmtVol(d.volume);
+    html += `<tr>
+      <td><span class="ticker">${d.ticker}</span></td>
+      <td class="col-name" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)">${d.name.replace(d.ticker,'').trim()||d.name}</td>
+      <td><span class="price">${d.price > 0 ? d.price.toFixed(2) : '—'}</span></td>
+      <td><span class="change ${chgClass}">${chgSign}${d.change.toFixed(2)}%</span></td>
+      <td>
+        <span class="rsi-bar"><span class="rsi-fill" style="width:${rsiW}%;background:${rsiColor}"></span></span>
+        <span class="rsi-val" style="color:${rsiColor}">${d.rsi ?? '—'}</span>
+      </td>
+      <td class="col-div"><span class="div-yield" style="color:${d.divYield>=4?'var(--green)':d.divYield>=2?'var(--amber)':'var(--muted)'}">${divStr}</span></td>
+      <td class="col-vol"><span class="${d.volSurge>=1.5?'volume-pill':''}">${volLabel}</span></td>
+      <td><span class="signal-badge ${sigClass}">${sigLabel}</span></td>
+      <td><div class="row-actions"><button class="danger" onclick="removeTicker('${d.ticker}')">ลบ</button></div></td>
+    </tr>`;
+  });
+  tbody.innerHTML = html || `<tr class="loading-row"><td colspan="9" style="text-align:center;color:var(--faint);padding:24px">ไม่มีหุ้นตรงกับตัวกรอง</td></tr>`;
+}
+
+function updateSummary() {
+  const all = Object.values(stockData).filter(d => !d.loading && !d.error);
+  document.getElementById('m-total').textContent = watchlist.length;
+  document.getElementById('m-buy').textContent = all.filter(d=>d.signal==='buy').length;
+  document.getElementById('m-sell').textContent = all.filter(d=>d.signal==='sell').length;
+  const divs = all.filter(d=>d.divYield>0);
+  const avgDiv = divs.length ? divs.reduce((s,d)=>s+d.divYield,0)/divs.length : 0;
+  document.getElementById('m-div').textContent = avgDiv > 0 ? avgDiv.toFixed(1)+'%' : '—';
+}
+
+function resetToDefault() {
+  if (!confirm('รีเซ็ตกลับเป็นลิสต์ของคุณ?')) return;
+  watchlist = [...DEFAULT_WATCHLIST];
+  stockData = {};
+  saveWatchlist();
+  renderTable();
+  refreshAll();
+  showToast('รีเซ็ตลิสต์แล้ว');
+}
+renderTable();
+refreshAll();
+</script>
+</body>
+</html>
