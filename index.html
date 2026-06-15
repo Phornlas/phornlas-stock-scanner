@@ -175,7 +175,8 @@ async function fetchSheetData() {
           const ticker = String(cols[0].v).trim().toUpperCase();
           const target = cols[1]?.v ? parseFloat(cols[1].v) : null;
           const lastUpdated = cols[2]?.v ? String(cols[2].v).trim() : null;
-          sheetData[ticker] = { target, lastUpdated };
+          const dividendPerShare = cols[3]?.v ? parseFloat(cols[3].v) : null;
+          sheetData[ticker] = { target, lastUpdated, dividendPerShare };
         });
         return;
       } catch(e) { continue; }
@@ -255,12 +256,13 @@ async function fetchStock(ticker) {
     const price = meta.regularMarketPrice || closes[closes.length-1] || 0;
     const rsi = calcRSI(closes);
     const ytd = calcYTD(closes, timestamps);
-    const divYield = meta.dividendYieldExtra || meta.dividendYield ? (meta.dividendYieldExtra || meta.dividendYield * 100) : (meta.trailingAnnualDividendYield ? meta.trailingAnnualDividendYield * 100 : 0);
+    const sheetDiv = sheetData[ticker]?.dividendPerShare;
+    const divYield = sheetDiv && price ? (sheetDiv / price * 100) : (meta.dividendYieldExtra || (meta.trailingAnnualDividendYield ? meta.trailingAnnualDividendYield * 100 : 0));
     const name = meta.shortName || meta.longName || ticker;
     const signal = calcSignal(rsi, price, ticker);
     const sheet = sheetData[ticker] || {};
     const upside = sheet.target && price ? ((sheet.target - price) / price * 100) : null;
-    stockData[ticker] = { ticker, name, price, rsi, ytd, divYield, signal, loading: false, error: false, target: sheet.target, upside, lastUpdated: sheet.lastUpdated };
+    stockData[ticker] = { ticker, name, price, rsi, ytd, divYield, signal, loading: false, error: false, target: sheet.target, upside, lastUpdated: sheet.lastUpdated, dividendPerShare: sheet.dividendPerShare };
   } catch(e) {
     stockData[ticker] = { ticker, name: ticker, price: 0, rsi: null, ytd: null, divYield: 0, signal: 'normal', loading: false, error: true, target: null, upside: null, lastUpdated: null };
   }
