@@ -38,7 +38,7 @@ button.danger{background:var(--red-bg);color:var(--red);border-color:#f7c1c1;fon
 .filter-chip{padding:5px 12px;border-radius:20px;font-size:12px;border:1px solid var(--border);background:var(--surface);cursor:pointer}
 .filter-chip.active{background:var(--text);color:#fff;border-color:var(--text)}
 .table-wrap{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface);margin-bottom:10px}
-.scroll-area{max-height:60vh;overflow-y:auto}
+.scroll-area{max-height:90vh;overflow-y:auto}
 .scroll-area::-webkit-scrollbar{width:4px}
 .scroll-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 table{width:100%;border-collapse:collapse}
@@ -114,6 +114,7 @@ tr.main-row.selected td{background:var(--blue-bg)}
         <thead>
           <tr>
             <th onclick="sortBy('ticker')">หุ้น</th>
+            <th onclick="sortBy('price')">ราคา (฿)</th>
             <th onclick="sortBy('rsi')">RSI Weekly</th>
             <th onclick="sortBy('signal')">สัญญาณ</th>
           </tr>
@@ -414,11 +415,11 @@ function renderTable(){
   let html = '';
   completed.concat(loading).concat(errored).forEach(function(d){
     if (d.loading) {
-      html += '<tr class="main-row"><td><span class="ticker">' + d.ticker + '</span></td><td colspan="2"><span class="spinner"></span>กำลังโหลด...</td></tr>';
+      html += '<tr class="main-row"><td><span class="ticker">' + d.ticker + '</span></td><td colspan="3"><span class="spinner"></span>กำลังโหลด...</td></tr>';
       return;
     }
     if (d.error) {
-      html += '<tr class="main-row"><td><span class="ticker">' + d.ticker + '</span></td><td colspan="2" style="color:var(--faint);font-size:12px">ไม่พบข้อมูล</td></tr>';
+      html += '<tr class="main-row"><td><span class="ticker">' + d.ticker + '</span></td><td colspan="3" style="color:var(--faint);font-size:12px">ไม่พบข้อมูล</td></tr>';
       return;
     }
     const rsiColor = d.rsi < 30 ? 'var(--red-mid)' : d.rsi < 45 ? 'var(--amber-mid)' : 'var(--green-mid)';
@@ -428,7 +429,7 @@ function renderTable(){
     const isSelected = openTicker === d.ticker ? ' selected' : '';
     html += '<tr class="main-row' + isSelected + '" data-ticker="' + d.ticker + '" onclick="toggleDetail(\'' + d.ticker + '\')">' +
       '<td><span class="ticker">' + d.ticker + '</span>' + (cleanName ? '<span class="ticker-name">' + cleanName + '</span>' : '') + '</td>' +
-
+      '<td><span class="price">฿' + (d.price > 0 ? d.price.toFixed(2) : '—') + '</span></td>' +
       '<td><div class="rsi-wrap"><div class="rsi-bar"><div class="rsi-fill" style="width:' + Math.min(100, d.rsi || 0) + '%;background:' + rsiColor + '"></div></div><span style="font-size:12px;color:' + rsiColor + ';font-weight:600">' + (d.rsi !== null ? d.rsi : '—') + '</span></div></td>' +
       '<td><span class="signal-badge ' + sigClass + '">' + sigLabel + '</span></td>' +
 
