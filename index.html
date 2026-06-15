@@ -114,10 +114,8 @@ tr.main-row.selected td{background:var(--blue-bg)}
         <thead>
           <tr>
             <th onclick="sortBy('ticker')">หุ้น</th>
-            <th onclick="sortBy('price')">ราคา (฿)</th>
             <th onclick="sortBy('rsi')">RSI Weekly</th>
             <th onclick="sortBy('signal')">สัญญาณ</th>
-            <th></th>
           </tr>
         </thead>
         <tbody id="stock-body"></tbody>
@@ -155,43 +153,26 @@ function showToast(msg){
 
 async function fetchSheetData(){
   try {
-    const url = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:json&sheet=Sheet1';
-    const proxies = [
-      function(u){ return 'https://corsproxy.io/?' + encodeURIComponent(u); },
-      function(u){ return 'https://api.allorigins.win/get?url=' + encodeURIComponent(u); }
-    ];
-    for (let i = 0; i < proxies.length; i++) {
-      try {
-        const res = await Promise.race([
-          fetch(proxies[i](url)),
-          new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('to')); }, 6000); })
-        ]);
-        if (!res.ok) continue;
-        const text = await res.text();
-        let json;
-        try {
-          const outer = JSON.parse(text);
-          const raw = outer.contents || text;
-          const match = raw.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
-          json = match ? JSON.parse(match[1]) : JSON.parse(raw);
-        } catch(e) {
-          const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
-          if (match) json = JSON.parse(match[1]);
-        }
-        if (!json || !json.table || !json.table.rows) continue;
-        json.table.rows.forEach(function(row){
-          const cols = row.c;
-          if (!cols || !cols[0] || !cols[0].v) return;
-          const ticker = String(cols[0].v).trim().toUpperCase();
-          const target = cols[1] && cols[1].v ? parseFloat(cols[1].v) : null;
-          const lastUpdated = cols[2] && cols[2].v ? String(cols[2].v).trim() : null;
-          const dividendPerShare = cols[3] && cols[3].v ? parseFloat(cols[3].v) : null;
-          const description = cols[4] && cols[4].v ? String(cols[4].v).trim() : null;
-          sheetData[ticker] = { target: target, lastUpdated: lastUpdated, dividendPerShare: dividendPerShare, description: description };
-        });
-        return;
-      } catch(e) { continue; }
-    }
+    const res = await Promise.race([
+      fetch('/api/quote?sheet=' + SHEET_ID),
+      new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('timeout')); }, 8000); })
+    ]);
+    if (!res.ok) return;
+    const text = await res.text();
+    const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+    if (!match) return;
+    const json = JSON.parse(match[1]);
+    if (!json || !json.table || !json.table.rows) return;
+    json.table.rows.forEach(function(row){
+      const cols = row.c;
+      if (!cols || !cols[0] || !cols[0].v) return;
+      const ticker = String(cols[0].v).trim().toUpperCase();
+      const target = cols[1] && cols[1].v ? parseFloat(cols[1].v) : null;
+      const lastUpdated = cols[2] && cols[2].v ? String(cols[2].v).trim() : null;
+      const dividendPerShare = cols[3] && cols[3].v ? parseFloat(cols[3].v) : null;
+      const description = cols[4] && cols[4].v ? String(cols[4].v).trim() : null;
+      sheetData[ticker] = { target: target, lastUpdated: lastUpdated, dividendPerShare: dividendPerShare, description: description };
+    });
   } catch(e) { console.log('Sheet fetch failed:', e); }
 }
 
@@ -395,6 +376,9 @@ function toggleDetail(ticker){
       '<div><div class="dl"></div><div class="dv"><button class="danger" onclick="removeTicker(\'' + ticker + '\')">ลบออก</button></div></div>' +
     '</div>';
   panel.style.display = 'block';
+  setTimeout(function(){
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 50);
 }
 
 function filterData(data){
@@ -430,11 +414,11 @@ function renderTable(){
   let html = '';
   completed.concat(loading).concat(errored).forEach(function(d){
     if (d.loading) {
-      html += '<tr class="main-row"><td><span class="ticker">' + d.ticker + '</span></td><td colspan="4"><span class="spinner"></span>กำลังโหลด...</td></tr>';
+      html += '<tr class="main-row"><td><span class="ticker">' + d.ticker + '</span></td><td colspan="2"><span class="spinner"></span>กำลังโหลด...</td></tr>';
       return;
     }
     if (d.error) {
-      html += '<tr class="main-row"><td><span class="ticker">' + d.ticker + '</span></td><td colspan="3" style="color:var(--faint);font-size:12px">ไม่พบข้อมูล</td><td><button class="danger" onclick="event.stopPropagation();removeTicker(\'' + d.ticker + '\')">ลบ</button></td></tr>';
+      html += '<tr class="main-row"><td><span class="ticker">' + d.ticker + '</span></td><td colspan="2" style="color:var(--faint);font-size:12px">ไม่พบข้อมูล</td></tr>';
       return;
     }
     const rsiColor = d.rsi < 30 ? 'var(--red-mid)' : d.rsi < 45 ? 'var(--amber-mid)' : 'var(--green-mid)';
@@ -444,10 +428,10 @@ function renderTable(){
     const isSelected = openTicker === d.ticker ? ' selected' : '';
     html += '<tr class="main-row' + isSelected + '" data-ticker="' + d.ticker + '" onclick="toggleDetail(\'' + d.ticker + '\')">' +
       '<td><span class="ticker">' + d.ticker + '</span>' + (cleanName ? '<span class="ticker-name">' + cleanName + '</span>' : '') + '</td>' +
-      '<td><span class="price">฿' + (d.price > 0 ? d.price.toFixed(2) : '—') + '</span></td>' +
+
       '<td><div class="rsi-wrap"><div class="rsi-bar"><div class="rsi-fill" style="width:' + Math.min(100, d.rsi || 0) + '%;background:' + rsiColor + '"></div></div><span style="font-size:12px;color:' + rsiColor + ';font-weight:600">' + (d.rsi !== null ? d.rsi : '—') + '</span></div></td>' +
       '<td><span class="signal-badge ' + sigClass + '">' + sigLabel + '</span></td>' +
-      '<td style="color:var(--faint);font-size:11px">›</td>' +
+
       '</tr>';
   });
   tbody.innerHTML = html || '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--faint)">ไม่มีหุ้นตรงกับตัวกรอง</td></tr>';
