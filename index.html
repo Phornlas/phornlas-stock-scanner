@@ -255,7 +255,7 @@ async function fetchStock(ticker) {
     const price = meta.regularMarketPrice || closes[closes.length-1] || 0;
     const rsi = calcRSI(closes);
     const ytd = calcYTD(closes, timestamps);
-    const divYield = meta.dividendYield ? meta.dividendYield * 100 : (meta.trailingAnnualDividendYield ? meta.trailingAnnualDividendYield * 100 : 0);
+    const divYield = meta.dividendYieldExtra || meta.dividendYield ? (meta.dividendYieldExtra || meta.dividendYield * 100) : (meta.trailingAnnualDividendYield ? meta.trailingAnnualDividendYield * 100 : 0);
     const name = meta.shortName || meta.longName || ticker;
     const signal = calcSignal(rsi, price, ticker);
     const sheet = sheetData[ticker] || {};
