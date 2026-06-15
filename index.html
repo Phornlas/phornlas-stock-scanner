@@ -40,7 +40,7 @@
   .filter-chip.active { background: var(--text); color: #fff; border-color: var(--text); }
   table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   thead { background: var(--bg); }
-  th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; }
+  th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; min-width: 60px; }
   th:hover { color: var(--text); }
   td { padding: 10px 12px; border-bottom: 1px solid #f0ede8; font-size: 13px; vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
@@ -146,6 +146,8 @@ async function fetchSheetData() {
     const proxies = [
       u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
       u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+      u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+      u => `https://thingproxy.freeboard.io/fetch/${u}`,
     ];
     for (const makeProxy of proxies) {
       try {
@@ -417,7 +419,7 @@ function renderTable() {
     <tr class="main-row" onclick="toggleDetail('${d.ticker}')">
       <td>
         <span class="ticker">${d.ticker}</span>
-        <span class="ticker-name">${d.name.replace(d.ticker, '').trim() || d.name}</span>
+        <span class="ticker-name">${d.name.replace(/^[_ ]+/, "")}</span>
       </td>
       <td><span class="price">฿${d.price > 0 ? d.price.toFixed(2) : '—'}</span></td>
       <td>
