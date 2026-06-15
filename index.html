@@ -44,13 +44,8 @@
   th:hover { color: var(--text); }
   td { padding: 10px 12px; border-bottom: 1px solid #f0ede8; font-size: 13px; vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
-  tr.main-row:hover td { background: #faf9f6; cursor: pointer; }
-  tr.detail-row { display: none; background: #faf9f6; }
-  tr.detail-row.open { display: table-row; }
-  .detail-inner { padding: 10px 12px 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
-  .detail-item { }
-  .detail-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 3px; }
-  .detail-value { font-size: 14px; font-weight: 500; color: var(--text); }
+  tr.main-row.selected td { background: var(--color-background-info); }
+    tr.main-row:hover td { background: #faf9f6; cursor: pointer; }
   .ticker { font-weight: 700; font-size: 14px; }
   .ticker-name { font-size: 11px; color: var(--faint); display: block; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
   .price { font-weight: 600; }
@@ -103,8 +98,9 @@
     <span class="filter-chip" onclick="setFilter('target',this)">🎯 มี Target</span>
   </div>
 
-  <table>
-    <thead>
+  <div style="max-height:65vh;overflow-y:auto;border-radius:var(--radius);border:1px solid var(--border)">
+  <table style="border:none;border-radius:0">
+    <thead style="position:sticky;top:0;z-index:1;background:var(--bg)">
       <tr>
         <th onclick="sortBy('ticker')">หุ้น</th>
         <th onclick="sortBy('price')">ราคา (฿)</th>
@@ -115,6 +111,8 @@
     </thead>
     <tbody id="stock-body"></tbody>
   </table>
+  </div>
+  <div id="detail-panel" style="display:none;margin-top:10px;padding:14px;background:var(--color-background-primary);border:0.5px solid var(--color-border-info);border-radius:var(--border-radius-lg)"></div>
   <div class="info-note">⚠️ ข้อมูลราคาจาก Yahoo Finance (delayed ~15 นาที) · RSI คำนวณจาก Weekly 14 สัปดาห์ · ไม่ใช่คำแนะนำการลงทุน · กดแถวเพื่อดูรายละเอียด</div>
 </div>
 <div class="toast" id="toast"></div>
@@ -176,7 +174,8 @@ async function fetchSheetData() {
           const target = cols[1]?.v ? parseFloat(cols[1].v) : null;
           const lastUpdated = cols[2]?.v ? String(cols[2].v).trim() : null;
           const dividendPerShare = cols[3]?.v ? parseFloat(cols[3].v) : null;
-          sheetData[ticker] = { target, lastUpdated, dividendPerShare };
+          const description = cols[4]?.v ? String(cols[4].v).trim() : null;
+          sheetData[ticker] = { target, lastUpdated, dividendPerShare, description };
         });
         return;
       } catch(e) { continue; }
@@ -262,7 +261,7 @@ async function fetchStock(ticker) {
     const signal = calcSignal(rsi, price, ticker);
     const sheet = sheetData[ticker] || {};
     const upside = sheet.target && price ? ((sheet.target - price) / price * 100) : null;
-    stockData[ticker] = { ticker, name, price, rsi, ytd, divYield, signal, loading: false, error: false, target: sheet.target, upside, lastUpdated: sheet.lastUpdated, dividendPerShare: sheet.dividendPerShare };
+    stockData[ticker] = { ticker, name, price, rsi, ytd, divYield, signal, loading: false, error: false, target: sheet.target, upside, lastUpdated: sheet.lastUpdated, dividendPerShare: sheet.dividendPerShare, description: sheet.description };
   } catch(e) {
     stockData[ticker] = { ticker, name: ticker, price: 0, rsi: null, ytd: null, divYield: 0, signal: 'normal', loading: false, error: true, target: null, upside: null, lastUpdated: null };
   }
@@ -341,14 +340,49 @@ function sortBy(key) {
 }
 
 function toggleDetail(ticker) {
-  const detailRow = document.getElementById('detail-' + ticker);
-  if (!detailRow) return;
-  if (openRow && openRow !== ticker) {
-    const prev = document.getElementById('detail-' + openRow);
-    if (prev) prev.classList.remove('open');
+  const panel = document.getElementById('detail-panel');
+  if (!panel) return;
+  if (openRow === ticker) {
+    panel.style.display = 'none';
+    openRow = null;
+    document.querySelectorAll('tr.main-row').forEach(r => r.classList.remove('selected'));
+    return;
   }
-  detailRow.classList.toggle('open');
-  openRow = detailRow.classList.contains('open') ? ticker : null;
+  openRow = ticker;
+  document.querySelectorAll('tr.main-row').forEach(r => r.classList.remove('selected'));
+  const row = document.querySelector(`tr.main-row[data-ticker="${ticker}"]`);
+  if (row) row.classList.add('selected');
+  const d = stockData[ticker];
+  if (!d) return;
+  const ytdStr = d.ytd != null ? (d.ytd >= 0 ? '+' : '') + d.ytd.toFixed(1) + '%' : '—';
+  const ytdColor = d.ytd > 0 ? 'var(--color-text-success)' : d.ytd < 0 ? 'var(--color-text-danger)' : 'var(--color-text-secondary)';
+  const divStr = d.divYield > 0 ? d.divYield.toFixed(1) + '%' : '—';
+  const targetStr = d.target ? '฿' + d.target.toFixed(2) : '—';
+  const upsideStr = d.upside != null ? (d.upside >= 0 ? '+' : '') + d.upside.toFixed(1) + '%' : '—';
+  const upsideColor = d.upside > 0 ? 'var(--color-text-success)' : d.upside < 0 ? 'var(--color-text-danger)' : 'var(--color-text-secondary)';
+  const updStr = d.lastUpdated || '—';
+  const updClass = getUpdateColor(d.lastUpdated);
+  const updColorMap = { 'upd-green': 'var(--color-text-success)', 'upd-amber': 'var(--color-text-warning)', 'upd-red': 'var(--color-text-danger)' };
+  const updColor = updColorMap[updClass] || 'var(--color-text-secondary)';
+  const sigLabel = { opportunity: '🔵 มีโอกาส', watch: '🟢 น่าสนใจ', normal: '⚪ ปกติ' }[d.signal] || '⚪ ปกติ';
+  const cleanName = d.name.replace(/^[A-Z0-9]+[_ ]*/, '').replace(/^[_ ]+/, '').trim() || d.ticker;
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div>
+        <span style="font-size:14px;font-weight:500;color:var(--color-text-primary)">${d.ticker}</span>
+        <span style="font-size:12px;color:var(--color-text-secondary);margin-left:6px">${cleanName}</span>
+      </div>
+      <span class="signal-badge ${{'opportunity':'sig-opportunity','watch':'sig-watch','normal':'sig-normal'}[d.signal]}">${sigLabel}</span>
+    </div>
+    ${d.description ? `<div style="font-size:12px;color:var(--color-text-secondary);padding:8px 10px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-bottom:10px;line-height:1.5">${d.description}</div>` : ''}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><div style="font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px">%YTD</div><div style="font-size:13px;font-weight:500;color:${ytdColor}">${ytdStr}</div></div>
+      <div><div style="font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px">ปันผล Yield</div><div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">${divStr}</div></div>
+      <div><div style="font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px">Target</div><div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">${targetStr}</div></div>
+      <div><div style="font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px">Upside</div><div style="font-size:13px;font-weight:500;color:${upsideColor}">${upsideStr}</div></div>
+      <div><div style="font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px">อัปเดต Target</div><div style="font-size:13px;font-weight:500;color:${updColor}">${updStr}</div></div>
+    </div>`;
+  panel.style.display = 'block';
 }
 
 function filterData(data) {
@@ -410,7 +444,7 @@ function renderTable() {
     const updClass = getUpdateColor(d.lastUpdated);
 
     html += `
-    <tr class="main-row" onclick="toggleDetail('${d.ticker}')">
+    <tr class="main-row" data-ticker="${d.ticker}" onclick="toggleDetail('${d.ticker}')">
       <td>
         <span class="ticker">${d.ticker}</span>
         <span class="ticker-name">${d.name.replace(/^[A-Z0-9]+[_ ]*/, "").replace(/^[_ ]+/, "").trim()}</span>
@@ -424,18 +458,466 @@ function renderTable() {
       </td>
       <td><span class="signal-badge ${sigClass}">${sigLabel}</span></td>
       <td><span class="expand-icon">›</span></td>
-    </tr>
-    <tr class="detail-row" id="detail-${d.ticker}">
-      <td colspan="5">
-        <div class="detail-inner">
-          <div class="detail-item"><div class="detail-label">%YTD</div><div class="detail-value" style="color:${ytdColor}">${ytdStr}</div></div>
-          <div class="detail-item"><div class="detail-label">ปันผล</div><div class="detail-value">${divStr}</div></div>
-          <div class="detail-item"><div class="detail-label">Target</div><div class="detail-value">${targetStr}</div></div>
-          <div class="detail-item"><div class="detail-label">Upside</div><div class="detail-value ${upsideClass}">${upsideStr}</div></div>
-          <div class="detail-item"><div class="detail-label">อัปเดต</div><div class="detail-value ${updClass}">${updStr}</div></div>
-          <div class="detail-item"><div class="detail-label"></div><div class="detail-value"><button class="danger" onclick="removeTicker('${d.ticker}')">ลบ</button></div></div>
+    </tr>\`YPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phornlas Stock Scanner</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f8f7f4; --surface: #ffffff; --border: #e8e6e1;
+    --text: #1a1a1a; --muted: #6b6b6b; --faint: #9a9a9a;
+    --green: #0f6e56; --green-bg: #e1f5ee; --green-mid: #1d9e75;
+    --red: #a32d2d; --red-bg: #fcebeb; --red-mid: #e24b4a;
+    --amber: #854f0b; --amber-bg: #faeeda; --amber-mid: #ba7517;
+    --blue: #185fa5; --blue-bg: #e6f1fb; --blue-mid: #378add;
+    --radius: 10px; --radius-sm: 6px;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+  .app { max-width: 700px; margin: 0 auto; padding: 20px 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+  .logo { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
+  .logo span { color: var(--green-mid); }
+  .last-update { font-size: 12px; color: var(--faint); }
+  button { font-family: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: var(--radius-sm); padding: 7px 13px; font-size: 13px; transition: background 0.15s; }
+  button:hover { background: var(--bg); }
+  button.primary { background: var(--green-mid); color: #fff; border-color: var(--green-mid); }
+  button.primary:hover { background: var(--green); }
+  button.danger { background: var(--red-bg); color: var(--red); border-color: #f7c1c1; font-size: 11px; padding: 4px 8px; }
+  .add-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .add-bar input { flex: 1; max-width: 180px; padding: 7px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; background: var(--surface); outline: none; text-transform: uppercase; }
+  .add-bar input:focus { border-color: var(--green-mid); }
+  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+  .metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+  .metric-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .metric-value { font-size: 20px; font-weight: 600; }
+  .metric-value.blue { color: var(--blue-mid); }
+  .metric-value.green { color: var(--green-mid); }
+  .filter-bar { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filter-chip { padding: 5px 12px; border-radius: 20px; font-size: 12px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; }
+  .filter-chip.active { background: var(--text); color: #fff; border-color: var(--text); }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  thead { background: var(--bg); }
+  th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; min-width: 60px; }
+  th:hover { color: var(--text); }
+  td { padding: 10px 12px; border-bottom: 1px solid #f0ede8; font-size: 13px; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr.main-row.selected td { background: var(--color-background-info); }
+    tr.main-row:hover td { background: #faf9f6; cursor: pointer; }
+  .ticker { font-weight: 700; font-size: 14px; }
+  .ticker-name { font-size: 11px; color: var(--faint); display: block; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+  .price { font-weight: 600; }
+  .rsi-wrap { display: flex; align-items: center; gap: 6px; }
+  .rsi-bar { width: 48px; height: 5px; background: #eee; border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+  .rsi-fill { height: 100%; border-radius: 3px; }
+  .signal-badge { padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; display: inline-block; }
+  .sig-opportunity { background: var(--blue-bg); color: var(--blue); }
+  .sig-watch { background: var(--green-bg); color: var(--green); }
+  .sig-normal { background: #f0ede8; color: var(--muted); }
+  .upd-green { color: var(--green); font-weight: 500; }
+  .upd-amber { color: var(--amber-mid); font-weight: 500; }
+  .upd-red { color: var(--red-mid); font-weight: 500; }
+  .upside-pos { color: var(--green); font-weight: 500; }
+  .upside-neg { color: var(--red-mid); font-weight: 500; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--green-mid); border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--text); color: #fff; padding: 10px 18px; border-radius: var(--radius-sm); font-size: 13px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 100; }
+  .toast.show { opacity: 1; }
+  .info-note { font-size: 11px; color: var(--faint); margin-top: 12px; line-height: 1.6; }
+  .expand-icon { color: var(--faint); font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">Phornlas Stock <span>Scanner</span></div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="last-update" id="last-update">ยังไม่ได้ดึงข้อมูล</span>
+      <button class="primary" onclick="refreshAll()">⟳ รีเฟรช</button>
+    </div>
+  </header>
+
+  <div class="add-bar">
+    <input type="text" id="ticker-input" placeholder="เพิ่มหุ้น เช่น AOT" maxlength="12" onkeydown="if(event.key==='Enter')addTicker()">
+    <button class="primary" onclick="addTicker()">+ เพิ่ม</button>
+    <button onclick="resetToDefault()" style="font-size:12px;color:var(--muted)">↺ คืนค่า</button>
+  </div>
+
+  <div class="summary-grid">
+    <div class="metric-card"><div class="metric-label">หุ้นทั้งหมด</div><div class="metric-value" id="m-total">—</div></div>
+    <div class="metric-card"><div class="metric-label">🔵 มีโอกาส</div><div class="metric-value blue" id="m-opp">—</div></div>
+    <div class="metric-card"><div class="metric-label">🟢 น่าสนใจ</div><div class="metric-value green" id="m-watch">—</div></div>
+  </div>
+
+  <div class="filter-bar">
+    <span class="filter-chip active" onclick="setFilter('all',this)">ทั้งหมด</span>
+    <span class="filter-chip" onclick="setFilter('opportunity',this)">🔵 มีโอกาส</span>
+    <span class="filter-chip" onclick="setFilter('watch',this)">🟢 น่าสนใจ</span>
+    <span class="filter-chip" onclick="setFilter('target',this)">🎯 มี Target</span>
+  </div>
+
+  <div style="max-height:65vh;overflow-y:auto;border-radius:var(--radius);border:1px solid var(--border)">
+  <table style="border:none;border-radius:0">
+    <thead style="position:sticky;top:0;z-index:1;background:var(--bg)">
+      <tr>
+        <th onclick="sortBy('ticker')">หุ้น</th>
+        <th onclick="sortBy('price')">ราคา (฿)</th>
+        <th onclick="sortBy('rsi')" style="min-width:70px">RSI Weekly</th>
+        <th onclick="sortBy('signal')">สัญญาณ</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="stock-body"></tbody>
+  </table>
+  </div>
+  <div id="detail-panel" style="display:none;margin-top:10px;padding:14px;background:var(--color-background-primary);border:0.5px solid var(--color-border-info);border-radius:var(--border-radius-lg)"></div>
+  <div class="info-note">⚠️ ข้อมูลราคาจาก Yahoo Finance (delayed ~15 นาที) · RSI คำนวณจาก Weekly 14 สัปดาห์ · ไม่ใช่คำแนะนำการลงทุน · กดแถวเพื่อดูรายละเอียด</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SHEET_ID = '1f482N-mIR3oeAfebNy7EKc3lm4ihRyoNxo2kBC4WF-g';
+const DEFAULT_WATCHLIST = ["88TH","ADVANC","ADVICE","BDMS","CENTEL","COM7","CPALL","CPI","DITTO","EFORL","FLOYD","ICHI","ILM","JCT","JDF","KAMART","KCG","KDH","KISS","LPH","LRH","MC","MINT","MOSHI","MRDIYT","NSL","PM","PR9","RAM","ROCK","SAUCE","SIS","SISB","SNPS","SYNEX","TMAN","TNP","VIH","WASH"];
+
+let watchlist = JSON.parse(localStorage.getItem('thai_watchlist_v4') || 'null') || [...DEFAULT_WATCHLIST];
+let stockData = {};
+let sheetData = {};
+let currentFilter = 'all';
+let sortKey = 'signal';
+let sortDir = 1;
+let openRow = null;
+
+function saveWatchlist() { localStorage.setItem('thai_watchlist_v4', JSON.stringify(watchlist)); }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ดึงข้อมูลจาก Google Sheets
+async function fetchSheetData() {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=Sheet1`;
+    const proxies = [
+      u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+      u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+      u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+      u => `https://thingproxy.freeboard.io/fetch/${u}`,
+    ];
+    for (const makeProxy of proxies) {
+      try {
+        const res = await Promise.race([
+          fetch(makeProxy(url)),
+          new Promise((_,rej) => setTimeout(() => rej(new Error('to')), 6000))
+        ]);
+        if (!res.ok) continue;
+        const text = await res.text();
+        let json;
+        try {
+          const outer = JSON.parse(text);
+          const raw = outer.contents || text;
+          const match = raw.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+          json = match ? JSON.parse(match[1]) : JSON.parse(raw);
+        } catch {
+          const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+          if (match) json = JSON.parse(match[1]);
+        }
+        if (!json?.table?.rows) continue;
+        const rows = json.table.rows;
+        rows.forEach(row => {
+          const cols = row.c;
+          if (!cols || !cols[0]?.v) return;
+          const ticker = String(cols[0].v).trim().toUpperCase();
+          const target = cols[1]?.v ? parseFloat(cols[1].v) : null;
+          const lastUpdated = cols[2]?.v ? String(cols[2].v).trim() : null;
+          const dividendPerShare = cols[3]?.v ? parseFloat(cols[3].v) : null;
+          const description = cols[4]?.v ? String(cols[4].v).trim() : null;
+          sheetData[ticker] = { target, lastUpdated, dividendPerShare, description };
+        });
+        return;
+      } catch(e) { continue; }
+    }
+  } catch(e) { console.log('Sheet fetch failed:', e); }
+}
+
+// คำนวณ RSI จาก Weekly closes
+function calcRSI(closes) {
+  if (closes.length < 15) return null;
+  let gains = 0, losses = 0;
+  for (let i = closes.length - 14; i < closes.length; i++) {
+    const d = closes[i] - closes[i-1];
+    if (d > 0) gains += d; else losses += Math.abs(d);
+  }
+  if (losses === 0) return 100;
+  const rs = (gains / 14) / (losses / 14);
+  return Math.round(100 - 100 / (1 + rs));
+}
+
+// คำนวณ %YTD
+function calcYTD(closes, timestamps) {
+  if (!closes.length || !timestamps) return null;
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1).getTime() / 1000;
+  let ytdClose = null;
+  for (let i = 0; i < timestamps.length; i++) {
+    if (timestamps[i] >= startOfYear) { ytdClose = closes[i]; break; }
+  }
+  if (!ytdClose) ytdClose = closes[0];
+  const current = closes[closes.length - 1];
+  return ((current - ytdClose) / ytdClose) * 100;
+}
+
+// คำนวณสัญญาณ
+function calcSignal(rsi, price, ticker) {
+  const sheet = sheetData[ticker];
+  const target = sheet?.target || null;
+  if (rsi === null) return 'normal';
+  if (rsi < 30 && target && price < target) return 'opportunity';
+  if (rsi < 30) return 'watch';
+  return 'normal';
+}
+
+// สีอัปเดต
+function getUpdateColor(lastUpdated) {
+  if (!lastUpdated) return 'upd-red';
+  const match = lastUpdated.match(/(\d{4})Q(\d)/);
+  if (!match) return 'upd-red';
+  const year = parseInt(match[1]);
+  const quarter = parseInt(match[2]);
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curQ = Math.ceil((now.getMonth() + 1) / 3);
+  const diffQ = (curYear - year) * 4 + (curQ - quarter);
+  if (diffQ <= 1) return 'upd-green';
+  if (diffQ <= 2) return 'upd-amber';
+  return 'upd-red';
+}
+
+async function fetchStock(ticker) {
+  try {
+    stockData[ticker] = { ...stockData[ticker], loading: true };
+    renderTable();
+    const res = await Promise.race([
+      fetch(`/api/quote?ticker=${encodeURIComponent(ticker)}`),
+      new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 12000))
+    ]);
+    if (!res.ok) throw new Error('api error');
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const result = data?.chart?.result?.[0];
+    if (!result) throw new Error('no data');
+    const meta = result.meta;
+    const closes = result.indicators?.quote?.[0]?.close?.filter(v => v != null) || [];
+    const timestamps = result.timestamp || [];
+    const price = meta.regularMarketPrice || closes[closes.length-1] || 0;
+    const rsi = calcRSI(closes);
+    const ytd = calcYTD(closes, timestamps);
+    const sheetDiv = sheetData[ticker]?.dividendPerShare;
+    const divYield = sheetDiv && price ? (sheetDiv / price * 100) : (meta.dividendYieldExtra || (meta.trailingAnnualDividendYield ? meta.trailingAnnualDividendYield * 100 : 0));
+    const name = meta.shortName || meta.longName || ticker;
+    const signal = calcSignal(rsi, price, ticker);
+    const sheet = sheetData[ticker] || {};
+    const upside = sheet.target && price ? ((sheet.target - price) / price * 100) : null;
+    stockData[ticker] = { ticker, name, price, rsi, ytd, divYield, signal, loading: false, error: false, target: sheet.target, upside, lastUpdated: sheet.lastUpdated, dividendPerShare: sheet.dividendPerShare, description: sheet.description };
+  } catch(e) {
+    stockData[ticker] = { ticker, name: ticker, price: 0, rsi: null, ytd: null, divYield: 0, signal: 'normal', loading: false, error: true, target: null, upside: null, lastUpdated: null };
+  }
+  renderTable();
+  updateSummary();
+}
+
+async function refreshAll() {
+  document.getElementById('last-update').textContent = 'กำลังดึงข้อมูล...';
+  await fetchSheetData();
+  const BATCH = 3;
+  for (let i = 0; i < watchlist.length; i += BATCH) {
+    const batch = watchlist.slice(i, i + BATCH);
+    await Promise.all(batch.map(t => fetchStock(t)));
+    await new Promise(r => setTimeout(r, 300));
+  }
+  // Retry รอบ 1
+  let failed = watchlist.filter(t => stockData[t]?.error);
+  if (failed.length > 0) {
+    await new Promise(r => setTimeout(r, 1500));
+    for (let i = 0; i < failed.length; i += 3) {
+      await Promise.all(failed.slice(i, i+3).map(t => fetchStock(t)));
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  // Retry รอบ 2 สำหรับที่ยังไม่ขึ้น
+  failed = watchlist.filter(t => stockData[t]?.error);
+  if (failed.length > 0) {
+    await new Promise(r => setTimeout(r, 2000));
+    await Promise.all(failed.map(t => fetchStock(t)));
+  }
+  const now = new Date();
+  document.getElementById('last-update').textContent = `อัพเดท ${now.toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'})}`;
+}
+
+function addTicker() {
+  const input = document.getElementById('ticker-input');
+  const raw = input.value.trim().toUpperCase().replace(/\.BK$/, '');
+  if (!raw) return;
+  if (watchlist.includes(raw)) { showToast(`${raw} มีอยู่แล้ว`); input.value = ''; return; }
+  watchlist.push(raw);
+  saveWatchlist();
+  input.value = '';
+  fetchStock(raw);
+  showToast(`เพิ่ม ${raw} แล้ว`);
+}
+
+function removeTicker(ticker) {
+  watchlist = watchlist.filter(t => t !== ticker);
+  delete stockData[ticker];
+  saveWatchlist();
+  renderTable();
+  showToast(`ลบ ${ticker} แล้ว`);
+}
+
+function resetToDefault() {
+  if (!confirm('รีเซ็ตกลับเป็นลิสต์เดิม?')) return;
+  watchlist = [...DEFAULT_WATCHLIST];
+  stockData = {};
+  saveWatchlist();
+  renderTable();
+  refreshAll();
+  showToast('รีเซ็ตลิสต์แล้ว');
+}
+
+function setFilter(f, el) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderTable();
+}
+
+function sortBy(key) {
+  if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = 1; }
+  renderTable();
+}
+
+function toggleDetail(ticker) {
+  const panel = document.getElementById('detail-panel');
+  if (!panel) return;
+  if (openRow === ticker) {
+    panel.style.display = 'none';
+    openRow = null;
+    document.querySelectorAll('tr.main-row').forEach(r => r.classList.remove('selected'));
+    return;
+  }
+  openRow = ticker;
+  document.querySelectorAll('tr.main-row').forEach(r => r.classList.remove('selected'));
+  const row = document.querySelector(`tr.main-row[data-ticker="${ticker}"]`);
+  if (row) row.classList.add('selected');
+  const d = stockData[ticker];
+  if (!d) return;
+  const ytdStr = d.ytd != null ? (d.ytd >= 0 ? '+' : '') + d.ytd.toFixed(1) + '%' : '—';
+  const ytdColor = d.ytd > 0 ? 'var(--color-text-success)' : d.ytd < 0 ? 'var(--color-text-danger)' : 'var(--color-text-secondary)';
+  const divStr = d.divYield > 0 ? d.divYield.toFixed(1) + '%' : '—';
+  const targetStr = d.target ? '฿' + d.target.toFixed(2) : '—';
+  const upsideStr = d.upside != null ? (d.upside >= 0 ? '+' : '') + d.upside.toFixed(1) + '%' : '—';
+  const upsideColor = d.upside > 0 ? 'var(--color-text-success)' : d.upside < 0 ? 'var(--color-text-danger)' : 'var(--color-text-secondary)';
+  const updStr = d.lastUpdated || '—';
+  const updClass = getUpdateColor(d.lastUpdated);
+  const updColorMap = { 'upd-green': 'var(--color-text-success)', 'upd-amber': 'var(--color-text-warning)', 'upd-red': 'var(--color-text-danger)' };
+  const updColor = updColorMap[updClass] || 'var(--color-text-secondary)';
+  const sigLabel = { opportunity: '🔵 มีโอกาส', watch: '🟢 น่าสนใจ', normal: '⚪ ปกติ' }[d.signal] || '⚪ ปกติ';
+  const cleanName = d.name.replace(/^[A-Z0-9]+[_ ]*/, '').replace(/^[_ ]+/, '').trim() || d.ticker;
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div>
+        <span style="font-size:14px;font-weight:500;color:var(--color-text-primary)">${d.ticker}</span>
+        <span style="font-size:12px;color:var(--color-text-secondary);margin-left:6px">${cleanName}</span>
+      </div>
+      <span class="signal-badge ${{'opportunity':'sig-opportunity','watch':'sig-watch','normal':'sig-normal'}[d.signal]}">${sigLabel}</span>
+    </div>
+    ${d.description ? `<div style="font-size:12px;color:var(--color-text-secondary);padding:8px 10px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);margin-bottom:10px;line-height:1.5">${d.description}</div>` : ''}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><div style="font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px">%YTD</div><div style="font-size:13px;font-weight:500;color:${ytdColor}">${ytdStr}</div></div>
+      <div><div style="font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px">ปันผล Yield</div><div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">${divStr}</div></div>
+      <div><div style="font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px">Target</div><div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">${targetStr}</div></div>
+      <div><div style="font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px">Upside</div><div style="font-size:13px;font-weight:500;color:${upsideColor}">${upsideStr}</div></div>
+      <div><div style="font-size:10px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px">อัปเดต Target</div><div style="font-size:13px;font-weight:500;color:${updColor}">${updStr}</div></div>
+    </div>`;
+  panel.style.display = 'block';
+}
+
+function filterData(data) {
+  if (currentFilter === 'all') return data;
+  if (currentFilter === 'opportunity') return data.filter(d => d.signal === 'opportunity');
+  if (currentFilter === 'watch') return data.filter(d => d.signal === 'watch');
+  if (currentFilter === 'target') return data.filter(d => d.target != null);
+  return data;
+}
+
+function signalOrder(s) { return { opportunity: 0, watch: 1, normal: 2 }[s] ?? 3; }
+
+function renderTable() {
+  const tbody = document.getElementById('stock-body');
+  if (watchlist.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--faint)">เพิ่มหุ้นด้านบนได้เลย</td></tr>`;
+    return;
+  }
+
+  let rows = watchlist.map(t => stockData[t] || { ticker: t, loading: true });
+  let completed = rows.filter(r => !r.loading && !r.error);
+  completed = filterData(completed);
+  completed.sort((a, b) => {
+    let va, vb;
+    if (sortKey === 'ticker') return sortDir * a.ticker.localeCompare(b.ticker);
+    if (sortKey === 'signal') { va = signalOrder(a.signal); vb = signalOrder(b.signal); }
+    else if (sortKey === 'rsi') { va = a.rsi ?? 999; vb = b.rsi ?? 999; }
+    else if (sortKey === 'price') { va = a.price; vb = b.price; }
+    else { va = 0; vb = 0; }
+    return sortDir * (va - vb);
+  });
+
+  const loading = rows.filter(r => r.loading);
+  const errored = rows.filter(r => !r.loading && r.error);
+
+  let html = '';
+  [...completed, ...loading, ...errored].forEach(d => {
+    if (d.loading) {
+      html += `<tr class="main-row"><td><span class="ticker">${d.ticker}</span></td><td colspan="4"><span class="spinner"></span>กำลังโหลด...</td></tr>`;
+      return;
+    }
+    if (d.error) {
+      html += `<tr class="main-row"><td><span class="ticker">${d.ticker}</span></td><td colspan="3" style="color:var(--faint);font-size:12px">ไม่พบข้อมูล</td><td><button class="danger" onclick="event.stopPropagation();removeTicker('${d.ticker}')">ลบ</button></td></tr>`;
+      return;
+    }
+
+    const rsiColor = d.rsi < 30 ? 'var(--red-mid)' : d.rsi < 45 ? 'var(--amber-mid)' : 'var(--green-mid)';
+    const sigLabel = { opportunity: '🔵 มีโอกาส', watch: '🟢 น่าสนใจ', normal: '⚪ ปกติ' }[d.signal] || '⚪';
+    const sigClass = { opportunity: 'sig-opportunity', watch: 'sig-watch', normal: 'sig-normal' }[d.signal] || 'sig-normal';
+
+    // Detail row
+    const ytdStr = d.ytd != null ? (d.ytd >= 0 ? '+' : '') + d.ytd.toFixed(1) + '%' : '—';
+    const ytdColor = d.ytd > 0 ? 'var(--green)' : d.ytd < 0 ? 'var(--red-mid)' : 'var(--muted)';
+    const divStr = d.divYield > 0 ? d.divYield.toFixed(1) + '%' : '—';
+    const targetStr = d.target ? '฿' + d.target.toFixed(2) : '—';
+    const upsideStr = d.upside != null ? (d.upside >= 0 ? '+' : '') + d.upside.toFixed(1) + '%' : '—';
+    const upsideClass = d.upside > 0 ? 'upside-pos' : d.upside < 0 ? 'upside-neg' : '';
+    const updStr = d.lastUpdated || '—';
+    const updClass = getUpdateColor(d.lastUpdated);
+
+    html += `
+    <tr class="main-row" data-ticker="${d.ticker}" onclick="toggleDetail('${d.ticker}')">
+      <td>
+        <span class="ticker">${d.ticker}</span>
+        <span class="ticker-name">${d.name.replace(/^[A-Z0-9]+[_ ]*/, "").replace(/^[_ ]+/, "").trim()}</span>
+      </td>
+      <td><span class="price">฿${d.price > 0 ? d.price.toFixed(2) : '—'}</span></td>
+      <td>
+        <div class="rsi-wrap">
+          <div class="rsi-bar"><div class="rsi-fill" style="width:${Math.min(100, d.rsi ?? 0)}%;background:${rsiColor}"></div></div>
+          <span style="font-size:12px;color:${rsiColor};font-weight:600">${d.rsi ?? '—'}</span>
         </div>
       </td>
+      <td><span class="signal-badge ${sigClass}">${sigLabel}</span></td>
+      <td><span class="expand-icon">›</span></td>
     </tr>`;
   });
 
