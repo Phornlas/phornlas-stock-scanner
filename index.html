@@ -108,7 +108,7 @@
       <tr>
         <th onclick="sortBy('ticker')">หุ้น</th>
         <th onclick="sortBy('price')">ราคา (฿)</th>
-        <th onclick="sortBy('rsi')">RSI W</th>
+        <th onclick="sortBy('rsi')" style="min-width:70px">RSI Weekly</th>
         <th onclick="sortBy('signal')">สัญญาณ</th>
         <th></th>
       </tr>
@@ -295,9 +295,19 @@ async function refreshAll() {
     await Promise.all(batch.map(t => fetchStock(t)));
     await new Promise(r => setTimeout(r, 300));
   }
-  const failed = watchlist.filter(t => stockData[t]?.error);
+  // Retry รอบ 1
+  let failed = watchlist.filter(t => stockData[t]?.error);
   if (failed.length > 0) {
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise(r => setTimeout(r, 1500));
+    for (let i = 0; i < failed.length; i += 3) {
+      await Promise.all(failed.slice(i, i+3).map(t => fetchStock(t)));
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  // Retry รอบ 2 สำหรับที่ยังไม่ขึ้น
+  failed = watchlist.filter(t => stockData[t]?.error);
+  if (failed.length > 0) {
+    await new Promise(r => setTimeout(r, 2000));
     await Promise.all(failed.map(t => fetchStock(t)));
   }
   const now = new Date();
@@ -419,7 +429,7 @@ function renderTable() {
     <tr class="main-row" onclick="toggleDetail('${d.ticker}')">
       <td>
         <span class="ticker">${d.ticker}</span>
-        <span class="ticker-name">${d.name.replace(/^[_ ]+/, "")}</span>
+        <span class="ticker-name">${d.name.replace(/^[A-Z0-9]+[_ ]*/, "").replace(/^[_ ]+/, "").trim()}</span>
       </td>
       <td><span class="price">฿${d.price > 0 ? d.price.toFixed(2) : '—'}</span></td>
       <td>
