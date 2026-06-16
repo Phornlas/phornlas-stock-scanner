@@ -162,7 +162,11 @@ async function fetchSheetData(){
     const text = await res.text();
     const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
     if (!match) return;
-    const json = JSON.parse(match[1]);
+    let jsonStr = match[1];
+    // ตัด trailing ); ออก
+    if (jsonStr.endsWith(');')) jsonStr = jsonStr.slice(0, -2);
+    else if (jsonStr.endsWith(')')) jsonStr = jsonStr.slice(0, -1);
+    const json = JSON.parse(jsonStr);
     if (!json || !json.table || !json.table.rows) return;
     json.table.rows.forEach(function(row){
       const cols = row.c;
@@ -285,6 +289,14 @@ async function refreshAll(){
   }
   const now = new Date();
   document.getElementById('last-update').textContent = 'อัพเดท ' + now.toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'});
+  // Auto-open หุ้นตัวแรกในตาราง
+  if (!openTicker) {
+    const firstRow = document.querySelector('tr.main-row[data-ticker]');
+    if (firstRow) {
+      const firstTicker = firstRow.getAttribute('data-ticker');
+      if (firstTicker) toggleDetail(firstTicker);
+    }
+  }
 }
 
 function addTicker(){
