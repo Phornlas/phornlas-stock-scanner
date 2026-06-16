@@ -160,13 +160,10 @@ async function fetchSheetData(){
     ]);
     if (!res.ok) return;
     const text = await res.text();
-    const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+    // parse Google Sheets response format: /*O_o*/ google.visualization.Query.setResponse({...});
+    const match = text.match(/setResponse\((\{[\s\S]*\})\)/);
     if (!match) return;
-    let jsonStr = match[1];
-    // ตัด trailing ); ออก
-    if (jsonStr.endsWith(');')) jsonStr = jsonStr.slice(0, -2);
-    else if (jsonStr.endsWith(')')) jsonStr = jsonStr.slice(0, -1);
-    const json = JSON.parse(jsonStr);
+    const json = JSON.parse(match[1]);
     if (!json || !json.table || !json.table.rows) return;
     json.table.rows.forEach(function(row){
       const cols = row.c;
